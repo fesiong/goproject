@@ -4,7 +4,7 @@
 
 ## golang项目直接引用
 安装依赖包
-```shell script
+```shell
 go get github.com/fesiong/goproject/convert
 ```
 使用说明  
