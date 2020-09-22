@@ -1,4 +1,4 @@
-module convert
+module github.com/fesiong/goproject/convert
 
 go 1.13
 
