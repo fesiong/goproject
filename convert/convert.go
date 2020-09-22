@@ -55,48 +55,56 @@ func ToUtf8(content string) string {
 
 /**
  * 内部编码判断和转换，会自动判断传入的字符串编码，并将它转换成utf-8
+ * windows-1252 并不是一个具体的编码，直接拿它来转码会失败
  */
 func toUtf8(content string, contentType string) string {
 	var htmlEncode string
-
+	var htmlEncode2 string
+	var htmlEncode3 string
 	if strings.Contains(contentType, "gbk") || strings.Contains(contentType, "gb2312") || strings.Contains(contentType, "gb18030") || strings.Contains(contentType, "windows-1252") {
 		htmlEncode = "gb18030"
 	} else if strings.Contains(contentType, "big5") {
 		htmlEncode = "big5"
 	} else if strings.Contains(contentType, "utf-8") {
+		//实际上，这里获取的编码未必是正确的，在下面还要做比对
 		htmlEncode = "utf-8"
 	}
-	if htmlEncode == "" {
-		//先尝试读取charset
-		reg := regexp.MustCompile(`(?is)<meta[^>]*charset\s*=["']?\s*([A-Za-z0-9\-]+)`)
-		match := reg.FindStringSubmatch(content)
-		if len(match) > 1 {
-			contentType = strings.ToLower(match[1])
-			if strings.Contains(contentType, "gbk") || strings.Contains(contentType, "gb2312") || strings.Contains(contentType, "gb18030") || strings.Contains(contentType, "windows-1252") {
-				htmlEncode = "gb18030"
-			} else if strings.Contains(contentType, "big5") {
-				htmlEncode = "big5"
-			} else if strings.Contains(contentType, "utf-8") {
-				htmlEncode = "utf-8"
-			}
-		}
-		if htmlEncode == "" {
-			reg = regexp.MustCompile(`(?is)<title[^>]*>(.*?)<\/title>`)
-			match = reg.FindStringSubmatch(content)
-			if len(match) > 1 {
-				aa := match[1]
-				_, contentType, _ = charset.DetermineEncoding([]byte(aa), "")
-				htmlEncode = strings.ToLower(htmlEncode)
-				if strings.Contains(contentType, "gbk") || strings.Contains(contentType, "gb2312") || strings.Contains(contentType, "gb18030") || strings.Contains(contentType, "windows-1252") {
-					htmlEncode = "gb18030"
-				} else if strings.Contains(contentType, "big5") {
-					htmlEncode = "big5"
-				} else if strings.Contains(contentType, "utf-8") {
-					htmlEncode = "utf-8"
-				}
-			}
+
+	reg := regexp.MustCompile(`(?is)<meta[^>]*charset\s*=["']?\s*([A-Za-z0-9\-]+)`)
+	match := reg.FindStringSubmatch(content)
+	if len(match) > 1 {
+		contentType = strings.ToLower(match[1])
+		if strings.Contains(contentType, "gbk") || strings.Contains(contentType, "gb2312") || strings.Contains(contentType, "gb18030") || strings.Contains(contentType, "windows-1252") {
+			htmlEncode2 = "gb18030"
+		} else if strings.Contains(contentType, "big5") {
+			htmlEncode2 = "big5"
+		} else if strings.Contains(contentType, "utf-8") {
+			htmlEncode2 = "utf-8"
 		}
 	}
+
+	reg = regexp.MustCompile(`(?is)<title[^>]*>(.*?)<\/title>`)
+	match = reg.FindStringSubmatch(content)
+	if len(match) > 1 {
+		aa := match[1]
+		_, contentType, _ = charset.DetermineEncoding([]byte(aa), "")
+		contentType = strings.ToLower(contentType)
+		if strings.Contains(contentType, "gbk") || strings.Contains(contentType, "gb2312") || strings.Contains(contentType, "gb18030") || strings.Contains(contentType, "windows-1252") {
+			htmlEncode3 = "gb18030"
+		} else if strings.Contains(contentType, "big5") {
+			htmlEncode3 = "big5"
+		} else if strings.Contains(contentType, "utf-8") {
+			htmlEncode3 = "utf-8"
+		}
+	}
+
+	if htmlEncode != "" && htmlEncode2 != "" && htmlEncode != htmlEncode2 {
+		htmlEncode = htmlEncode2
+	}
+	if htmlEncode == "utf-8" && htmlEncode != htmlEncode3 {
+		htmlEncode = htmlEncode3
+	}
+
 	if htmlEncode != "" && htmlEncode != "utf-8" {
 		content = Convert(content, htmlEncode, "utf-8")
 	}
