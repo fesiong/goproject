@@ -25,13 +25,17 @@ type RequestData struct {
 /**
  * 请求网络页面，并自动检测页面内容的编码，转换成utf-8
  */
-func Request(urlPath string) (*RequestData, error) {
-	resp, body, errs := gorequest.New().Timeout(90 * time.Second).Get(urlPath).End()
+func Request(urlPath string, timeout time.Duration) (*RequestData, error) {
+	if timeout <= 0 {
+		//默认90秒
+		timeout = 90
+	}
+	resp, body, errs := gorequest.New().Timeout(timeout * time.Second).Get(urlPath).End()
 	if len(errs) > 0 {
 		//如果是https,则尝试退回http请求
 		if strings.HasPrefix(urlPath, "https://") {
 			urlPath = strings.Replace(urlPath, "https://", "http://", 1)
-			return Request(urlPath)
+			return Request(urlPath, timeout)
 		}
 		return nil, errs[0]
 	}
