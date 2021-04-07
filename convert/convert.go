@@ -16,6 +16,10 @@ type RequestData struct {
 	Body       string
 	Status     string
 	StatusCode int
+	Domain string
+	Scheme string
+	IP     string
+	Server string
 }
 
 /**
@@ -25,13 +29,13 @@ func Request(urlPath string) (*RequestData, error) {
 	resp, body, errs := gorequest.New().Timeout(90 * time.Second).Get(urlPath).End()
 	if len(errs) > 0 {
 		//如果是https,则尝试退回http请求
-		if strings.HasPrefix(urlPath, "https") {
+		if strings.HasPrefix(urlPath, "https://") {
 			urlPath = strings.Replace(urlPath, "https://", "http://", 1)
 			return Request(urlPath)
 		}
 		return nil, errs[0]
 	}
-	defer resp.Body.Close()
+
 	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
 	body = toUtf8(body, contentType)
 
@@ -41,6 +45,9 @@ func Request(urlPath string) (*RequestData, error) {
 		Body:       body,
 		Status:     resp.Status,
 		StatusCode: resp.StatusCode,
+		Domain: resp.Request.Host,
+		Scheme: resp.Request.URL.Scheme,
+		Server: resp.Header.Get("Server"),
 	}
 
 	return &requestData, nil
@@ -98,13 +105,15 @@ func toUtf8(content string, contentType string) string {
 		}
 	}
 
-	if htmlEncode != "" && htmlEncode2 != "" && htmlEncode != htmlEncode2 {
+	//fmt.Println(fmt.Sprintf("contentType:%s, htmlEncode:%s, htmlEncode2:%s, htmlEncode3:%s", contentType, htmlEncode, htmlEncode2, htmlEncode3))
+	if htmlEncode3 != "" && htmlEncode2 != htmlEncode3 {
+		htmlEncode2 = htmlEncode3
+	}
+	if htmlEncode2 != "" && htmlEncode != htmlEncode2 {
 		htmlEncode = htmlEncode2
 	}
-	if htmlEncode == "utf-8" && htmlEncode != htmlEncode3 {
-		htmlEncode = htmlEncode3
-	}
 
+	//fmt.Println(fmt.Sprintf("contentType:%s, htmlEncode:%s, htmlEncode2:%s, htmlEncode3:%s", contentType, htmlEncode, htmlEncode2, htmlEncode3))
 	if htmlEncode != "" && htmlEncode != "utf-8" {
 		content = Convert(content, htmlEncode, "utf-8")
 	}
