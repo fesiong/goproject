@@ -16,26 +16,67 @@ type RequestData struct {
 	Body       string
 	Status     string
 	StatusCode int
-	Domain string
-	Scheme string
-	IP     string
-	Server string
+	Domain     string
+	Scheme     string
+	IP         string
+	Server     string
+}
+
+type Options struct {
+	Timeout time.Duration
+	Method  string
+	Type    string
+	Query   interface{}
+	Data    interface{}
+	Header  map[string]string
+	Proxy   string
+	Cookies []*http.Cookie
 }
 
 /**
  * 请求网络页面，并自动检测页面内容的编码，转换成utf-8
  */
-func Request(urlPath string, timeout time.Duration) (*RequestData, error) {
-	if timeout <= 0 {
-		//默认90秒
-		timeout = 90
+func Request(urlPath string, options *Options) (*RequestData, error) {
+	if options.Timeout == 0 {
+		options.Timeout = 90
 	}
-	resp, body, errs := gorequest.New().Timeout(timeout * time.Second).Get(urlPath).End()
+	if options.Method == "" {
+		options.Method = "GET"
+	}
+	options.Method = strings.ToUpper(options.Method)
+
+	req := gorequest.New().Timeout(options.Timeout * time.Second)
+	if options.Type != "" {
+		req = req.Type(options.Type)
+	}
+	if options.Proxy != "" {
+		req = req.Proxy(options.Proxy)
+	}
+	if options.Cookies != nil {
+		req = req.AddCookies(options.Cookies)
+	}
+	if options.Query != nil {
+		req = req.Query(options.Query)
+	}
+	if options.Data != nil {
+		req = req.Send(options.Data)
+	}
+	if options.Header != nil {
+		for i, v := range options.Header {
+			req = req.Set(i, v)
+		}
+	}
+	if options.Method == "POST" {
+		req = req.Post(urlPath)
+	} else {
+		req = req.Get(urlPath)
+	}
+	resp, body, errs := req.End()
 	if len(errs) > 0 {
 		//如果是https,则尝试退回http请求
 		if strings.HasPrefix(urlPath, "https://") {
 			urlPath = strings.Replace(urlPath, "https://", "http://", 1)
-			return Request(urlPath, timeout)
+			return Request(urlPath, options)
 		}
 		return nil, errs[0]
 	}
@@ -49,9 +90,9 @@ func Request(urlPath string, timeout time.Duration) (*RequestData, error) {
 		Body:       body,
 		Status:     resp.Status,
 		StatusCode: resp.StatusCode,
-		Domain: resp.Request.Host,
-		Scheme: resp.Request.URL.Scheme,
-		Server: resp.Header.Get("Server"),
+		Domain:     resp.Request.Host,
+		Scheme:     resp.Request.URL.Scheme,
+		Server:     resp.Header.Get("Server"),
 	}
 
 	return &requestData, nil
