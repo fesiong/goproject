@@ -1,12 +1,18 @@
 package convert
 
 import (
+	"context"
+	"crypto/tls"
 	"github.com/axgle/mahonia"
 	"github.com/parnurzeal/gorequest"
 	"golang.org/x/net/html/charset"
+	"golang.org/x/net/publicsuffix"
+	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,23 +26,49 @@ type RequestData struct {
 	Scheme     string
 	IP         string
 	Server     string
+	Proxy    string
 }
 
 type Options struct {
-	Timeout time.Duration
-	Method  string
-	Type    string
-	Query   interface{}
-	Data    interface{}
-	Header  map[string]string
-	Proxy   string
-	Cookies []*http.Cookie
+	Timeout   time.Duration
+	Method    string
+	Type      string
+	Query     interface{}
+	Data      interface{}
+	Header    map[string]string
+	Proxy     string
+	Cookies   []*http.Cookie
+	UserAgent string
+	IsMobile  bool
+	DialContext func(ctx context.Context, network, addr string) (net.Conn, error)
+}
+
+var httpClient *http.Client
+
+func getHttpClient() *http.Client {
+	mu := sync.Mutex{}
+	mu.Lock()
+	if httpClient != nil {
+		mu.Unlock()
+		return httpClient
+	}
+	cookiejarOptions := cookiejar.Options{
+		PublicSuffixList: publicsuffix.List,
+	}
+	jar, _ := cookiejar.New(&cookiejarOptions)
+
+	httpClient = &http.Client{Jar: jar}
+	mu.Unlock()
+	return httpClient
 }
 
 /**
  * 请求网络页面，并自动检测页面内容的编码，转换成utf-8
  */
 func Request(urlPath string, options *Options) (*RequestData, error) {
+	if options == nil {
+		options = &Options{}
+	}
 	if options.Timeout == 0 {
 		options.Timeout = 90
 	}
@@ -45,7 +77,9 @@ func Request(urlPath string, options *Options) (*RequestData, error) {
 	}
 	options.Method = strings.ToUpper(options.Method)
 
-	req := gorequest.New().Timeout(options.Timeout * time.Second)
+	req := gorequest.New().SetDoNotClearSuperAgent(true).TLSClientConfig(&tls.Config{ InsecureSkipVerify: true}).Timeout(options.Timeout * time.Second)
+	//都使用一个client
+	req.Client = getHttpClient()
 	if options.Type != "" {
 		req = req.Type(options.Type)
 	}
@@ -66,20 +100,40 @@ func Request(urlPath string, options *Options) (*RequestData, error) {
 			req = req.Set(i, v)
 		}
 	}
+
+	if options.UserAgent == "" {
+		if options.IsMobile {
+			options.UserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1"
+		} else {
+			options.UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_4_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.128 Safari/537.36"
+		}
+	}
+	req = req.Set("User-Agent", options.UserAgent)
+
+	if options.DialContext != nil {
+		req.Transport.DialContext = options.DialContext
+	}
+
 	if options.Method == "POST" {
 		req = req.Post(urlPath)
 	} else {
 		req = req.Get(urlPath)
 	}
+
+
+
 	resp, body, errs := req.End()
 	if len(errs) > 0 {
-		//如果是https,则尝试退回http请求
-		if strings.HasPrefix(urlPath, "https://") {
-			urlPath = strings.Replace(urlPath, "https://", "http://", 1)
-			return Request(urlPath, options)
-		}
-		return nil, errs[0]
+		////如果是https,则尝试退回http请求
+		//if strings.HasPrefix(urlPath, "https://") {
+		//	urlPath = strings.Replace(urlPath, "https://", "http://", 1)
+		//	return Request(urlPath, options)
+		//}
+		return &RequestData{Proxy: options.Proxy}, errs[0]
 	}
+	//
+	//domain, _ := url.Parse(urlPath)
+	//log.Println(req.Client.Jar.Cookies(domain))
 
 	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
 	body = toUtf8(body, contentType)
@@ -93,6 +147,7 @@ func Request(urlPath string, options *Options) (*RequestData, error) {
 		Domain:     resp.Request.Host,
 		Scheme:     resp.Request.URL.Scheme,
 		Server:     resp.Header.Get("Server"),
+		Proxy:    options.Proxy,
 	}
 
 	return &requestData, nil
@@ -174,7 +229,7 @@ func Convert(src string, srcCode string, tagCode string) string {
 	if srcCode == tagCode {
 		return src
 	}
-	srcCoder := mahonia.NewDecoder(srcCode)
+	srcCoder := mahonia.NewEncoder(srcCode)
 	srcResult := srcCoder.ConvertString(src)
 	tagCoder := mahonia.NewDecoder(tagCode)
 	_, cdata, _ := tagCoder.Translate([]byte(srcResult), true)

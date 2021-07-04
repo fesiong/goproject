@@ -7,7 +7,7 @@ import (
 // Test for Request.
 func TestRequest(t *testing.T) {
 	link := "http://www.fengying.com.tw/"
-	resp, err := Request(link, 90)
+	resp, err := Request(link, nil)
 	if err != nil {
 		t.Error(err.Error())
 	}
